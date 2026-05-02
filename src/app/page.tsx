@@ -20,12 +20,13 @@ import {
   Copy,
   Check,
   PlusCircle,
-  Moon
+  Moon,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Home() {
-  const { processPDF, chunks, setChunks, isProcessing, fileName } = usePDF();
+  const { processPDF, chunks, setChunks, isProcessing, extractionProgress, fileName } = usePDF();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -65,15 +66,17 @@ export default function Home() {
     const loadSession = async () => {
       const savedFileName = localStorage.getItem('last-pdf-name');
       const savedIndex = localStorage.getItem('last-chunk-index');
-      const savedChunks = localStorage.getItem('last-chunks');
+      
+      // Load chunks from IndexedDB (safer for large files)
+      const savedChunks = await get('last-chunks');
 
       if (savedFileName && savedChunks) {
-        const parsedChunks = JSON.parse(savedChunks);
+        setChunks(savedChunks);
         const index = savedIndex ? parseInt(savedIndex) : 0;
         setSavedSession({
           name: savedFileName,
           index: index,
-          progress: Math.round(((index + 1) / parsedChunks.length) * 100)
+          progress: Math.round(((index + 1) / savedChunks.length) * 100)
         });
       }
 
@@ -84,8 +87,8 @@ export default function Home() {
       // Try to recover file from IndexedDB
       const fileData = await get('last-pdf-file');
       if (fileData && !savedChunks) {
-        // If we have the file but no chunks (rare), re-process
-        processPDF(fileData, savedFileName || 'Restored PDF');
+        const savedCleanMode = localStorage.getItem('pref-clean-mode');
+        processPDF(fileData, savedFileName || 'Restored PDF', savedCleanMode !== null ? savedCleanMode === 'true' : true);
       }
     };
     loadSession();
@@ -94,7 +97,10 @@ export default function Home() {
   // Persistence: Save session
   useEffect(() => {
     if (chunks.length > 0) {
-      localStorage.setItem('last-chunks', JSON.stringify(chunks));
+      // Save large data to IndexedDB
+      set('last-chunks', chunks).catch(err => console.error('Failed to save chunks:', err));
+      
+      // Save small metadata to localStorage
       localStorage.setItem('last-chunk-index', currentIndex.toString());
       if (fileName) localStorage.setItem('last-pdf-name', fileName);
     }
@@ -155,11 +161,11 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [sleepTimer, isAutoPlaying, pause]);
 
-  const handleResume = () => {
-    const savedChunks = localStorage.getItem('last-chunks');
+  const handleResume = async () => {
+    const savedChunks = await get('last-chunks');
     const savedIndex = localStorage.getItem('last-chunk-index');
     if (savedChunks) {
-      setChunks(JSON.parse(savedChunks));
+      setChunks(savedChunks);
       if (savedIndex) setCurrentIndex(parseInt(savedIndex));
     }
   };
@@ -192,9 +198,23 @@ export default function Home() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const newChunks = await processPDF(file, file.name);
-      setCurrentIndex(0);
-      await set('last-pdf-file', await file.arrayBuffer());
+      try {
+        // Get arrayBuffer once
+        const buffer = await file.arrayBuffer();
+        
+        // Clear old session
+        setChunks([]);
+        setCurrentIndex(0);
+        await set('last-chunks', []); // Clear old chunks from storage
+        
+        // Store file in IndexedDB
+        await set('last-pdf-file', buffer);
+        
+        // Process
+        await processPDF(buffer, file.name, settings.cleanReadingMode);
+      } catch (error) {
+        console.error('File upload/process error:', error);
+      }
     }
   };
 
@@ -276,9 +296,28 @@ export default function Home() {
       {/* Reader Area */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-8 pb-40 no-scrollbar relative">
         {isProcessing ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-            <p className="text-slate-500 animate-pulse">Extracting magic from PDF...</p>
+          <div className="flex flex-col items-center justify-center h-64 gap-6">
+            <div className="relative w-20 h-20">
+              <svg className="w-full h-full" viewBox="0 0 100 100">
+                <circle 
+                  className="text-slate-200 dark:text-slate-800 stroke-current" 
+                  strokeWidth="8" stroke="currentColor" fill="transparent" r="40" cx="50" cy="50" 
+                />
+                <motion.circle 
+                  className="text-indigo-600 stroke-current" 
+                  strokeWidth="8" strokeDasharray="251.2" 
+                  animate={{ strokeDashoffset: 251.2 - (251.2 * extractionProgress) / 100 }}
+                  strokeLinecap="round" fill="transparent" r="40" cx="50" cy="50" 
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-indigo-600">
+                {extractionProgress}%
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-slate-900 dark:text-white mb-1">Processing PDF</p>
+              <p className="text-sm text-slate-500 animate-pulse">Extracting text for the best reading experience...</p>
+            </div>
           </div>
         ) : chunks.length > 0 ? (
           <div className="max-w-2xl mx-auto space-y-6 py-[35vh]">
@@ -513,6 +552,29 @@ export default function Home() {
                   >
                     <motion.div 
                       animate={{ x: isAutoScrollEnabled ? 24 : 0 }}
+                      className="w-4 h-4 bg-white rounded-full shadow-sm"
+                    />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
+                  <div>
+                    <p className="text-sm font-bold flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      Clean Reading Mode
+                    </p>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Remove headers, footers & page numbers</p>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      updateSettings({ cleanReadingMode: !settings.cleanReadingMode });
+                    }}
+                    className={`w-12 h-6 rounded-full transition-colors relative flex items-center px-1 ${
+                      settings.cleanReadingMode ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <motion.div 
+                      animate={{ x: settings.cleanReadingMode ? 24 : 0 }}
                       className="w-4 h-4 bg-white rounded-full shadow-sm"
                     />
                   </button>

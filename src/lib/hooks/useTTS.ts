@@ -10,6 +10,7 @@ export const useTTS = (onChunkEnd?: () => void) => {
     rate: 1,
     pitch: 1,
     volume: 1,
+    cleanReadingMode: true,
   });
 
   const synth = useRef<SpeechSynthesis | null>(null);
@@ -25,6 +26,8 @@ export const useTTS = (onChunkEnd?: () => void) => {
         
         // Try to find a good default voice
         const savedVoiceName = localStorage.getItem('tts-voice');
+        const savedCleanMode = localStorage.getItem('pref-clean-mode');
+
         const defaultVoice = availableVoices.find(v => v.name === savedVoiceName) || 
                        availableVoices.find(v => v.name.includes('Google') && v.lang.includes('en')) ||
                        availableVoices.find(v => v.lang.includes('en')) ||
@@ -32,7 +35,11 @@ export const useTTS = (onChunkEnd?: () => void) => {
         
         if (defaultVoice) {
           setCurrentVoice(defaultVoice);
-          setSettings(prev => ({ ...prev, voiceName: defaultVoice.name }));
+          setSettings(prev => ({ 
+            ...prev, 
+            voiceName: defaultVoice.name,
+            cleanReadingMode: savedCleanMode !== null ? savedCleanMode === 'true' : true
+          }));
         }
       };
 
@@ -112,6 +119,9 @@ export const useTTS = (onChunkEnd?: () => void) => {
         const voice = voices.find(v => v.name === newSettings.voiceName);
         if (voice) setCurrentVoice(voice);
         localStorage.setItem('tts-voice', newSettings.voiceName);
+      }
+      if (newSettings.cleanReadingMode !== undefined) {
+        localStorage.setItem('pref-clean-mode', newSettings.cleanReadingMode.toString());
       }
       return updated;
     });

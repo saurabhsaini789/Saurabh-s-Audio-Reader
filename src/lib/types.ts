@@ -10,6 +10,7 @@ export interface AppSettings {
   rate: number;
   pitch: number;
   volume: number;
+  cleanReadingMode: boolean;
 }
 
 export interface AppState {
