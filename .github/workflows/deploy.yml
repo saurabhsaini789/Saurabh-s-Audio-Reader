@@ -48,7 +48,8 @@ jobs:
         run: npx next build
 
       - name: List output directory
-        run: ls -la ./out || echo "ERROR: ./out directory does not exist!"
+        run: |
+          ls -la ./out || echo "ERROR: ./out directory does not exist"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
