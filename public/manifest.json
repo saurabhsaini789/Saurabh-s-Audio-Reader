@@ -1,0 +1,22 @@
+{
+  "name": "AudioReader",
+  "short_name": "AudioReader",
+  "description": "Your PDFs, Narrated. Smooth, audiobook-style reading.",
+  "start_url": "/Saurabh-s-Audio-Reader/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "/Saurabh-s-Audio-Reader/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/Saurabh-s-Audio-Reader/apple-touch-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

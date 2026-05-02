@@ -10,6 +10,11 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: "AudioReader - Your PDFs, Narrated",
   description: "Smooth, audiobook-style reading for your PDF documents using native text-to-speech.",
+  manifest: "/Saurabh-s-Audio-Reader/manifest.json",
+  icons: {
+    icon: "/Saurabh-s-Audio-Reader/icon.png",
+    apple: "/Saurabh-s-Audio-Reader/apple-touch-icon.png",
+  },
 };
 
 export const viewport = {
@@ -17,6 +22,7 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  themeColor: "#6366f1",
 };
 
 export default function RootLayout({
