@@ -5,57 +5,63 @@ export interface TextItem {
   pageNumber: number;
 }
 
+export interface RawPageData {
+  items: any[];
+  pageNumber: number;
+  viewportHeight: number;
+}
+
 export interface PDFCleaningOptions {
   enabled: boolean;
   repetitionThreshold?: number;
   maxHeaderFooterLength?: number;
-  // Performance options
-  sampleLimit?: number; // Max pages to analyze for frequency map
+  sampleLimit?: number;
 }
 
 export class PDFCleaner {
-  private pageCount = 0;
   private lineFrequency = new Map<string, number>();
   private linePositions = new Map<string, Set<number>>();
-  
-  // To save memory, we can store pages as arrays of line indices or just raw text if preferred
-  // For now, let's keep the lines but be mindful of total count
-  private pages: { lines: TextItem[]; viewportHeight: number }[] = [];
-  
   private analyzedPageCount = 0;
 
   constructor(private options: PDFCleaningOptions = { enabled: true, sampleLimit: 50 }) {}
 
   /**
-   * Phase 1: Build the frequency map. 
-   * For performance, we might only call this for a subset of pages.
+   * Phase 1: Build frequency map from a collection of raw page data.
    */
-  analyzePage(items: any[], pageNumber: number, viewportHeight: number) {
+  analyzePages(pages: RawPageData[]) {
     if (!this.options.enabled) return;
-    
-    this.analyzedPageCount++;
-    const lines = this.processItemsIntoLines(items, pageNumber, viewportHeight);
 
-    lines.forEach(line => {
-      const text = line.text.trim();
-      if (!text || text.length > (this.options.maxHeaderFooterLength || 80)) return;
+    // Use a subset if sampleLimit is set and exceeded
+    const pagesToAnalyze = this.options.sampleLimit && pages.length > this.options.sampleLimit
+      ? pages.filter((_, i) => i % Math.ceil(pages.length / this.options.sampleLimit!) === 0)
+      : pages;
 
-      this.lineFrequency.set(text, (this.lineFrequency.get(text) || 0) + 1);
-      
-      if (!this.linePositions.has(text)) {
-        this.linePositions.set(text, new Set());
-      }
-      this.linePositions.get(text)?.add(Math.round(line.y));
+    this.analyzedPageCount = pagesToAnalyze.length;
+
+    pagesToAnalyze.forEach(page => {
+      const lines = this.processItemsIntoLines(page.items, page.pageNumber, page.viewportHeight);
+
+      lines.forEach(line => {
+        const text = line.text.trim();
+        if (!text || text.length > (this.options.maxHeaderFooterLength || 80)) return;
+
+        this.lineFrequency.set(text, (this.lineFrequency.get(text) || 0) + 1);
+        
+        if (!this.linePositions.has(text)) {
+          this.linePositions.set(text, new Set());
+        }
+        this.linePositions.get(text)?.add(Math.round(line.y));
+      });
     });
   }
 
   /**
-   * Phase 2: Process a page for actual extraction using the frequency map.
+   * Phase 2: Clean a single raw page using the built frequency map.
    */
-  cleanPage(items: any[], pageNumber: number, viewportHeight: number): string {
-    const lines = this.processItemsIntoLines(items, pageNumber, viewportHeight);
+  cleanPageData(page: RawPageData): string {
+    const lines = this.processItemsIntoLines(page.items, page.pageNumber, page.viewportHeight);
     
-    if (!this.options.enabled) {
+    if (!this.options.enabled || this.analyzedPageCount === 0) {
       return lines.map(l => l.text).join(' ');
     }
 
@@ -64,41 +70,46 @@ export class PDFCleaner {
 
     const filteredLines = lines.filter(line => {
       const text = line.text.trim();
+      if (!text) return false;
       
-      // 1. Repetition detection
       const freq = (this.lineFrequency.get(text) || 0) / this.analyzedPageCount;
-      const isRepeated = freq >= threshold;
+      const isRepeated = this.analyzedPageCount > 1 && freq >= threshold;
       const isShort = text.length < maxLength;
       
-      // 2. Pattern-based filtering
       const isPageNumber = /^\d+$/.test(text) || 
                            /^page \d+$/i.test(text) || 
-                           /^\d+\s*\/\s*\d+$/.test(text);
+                           /^\d+\s*[\/-]\s*\d+$/.test(text) ||
+                           /^[pP]\.?\s*\d+$/.test(text);
       
-      const isNumericOnly = /^[0-9\s.,/-]+$/.test(text) && text.length < 10;
+      const isNumericOnly = /^[0-9\s.,\/-]+$/.test(text) && text.length < 10;
 
       if (isPageNumber || isNumericOnly) return false;
 
-      // 3. Positional confidence
       const positions = this.linePositions.get(text);
       let isInConsistentPosition = false;
-      if (positions && positions.size <= 3) {
+      if (positions && positions.size > 0) {
         const avgY = Array.from(positions).reduce((a, b) => a + b, 0) / positions.size;
-        const isNearTop = avgY > viewportHeight * 0.85;
-        const isNearBottom = avgY < viewportHeight * 0.15;
-        isInConsistentPosition = isNearTop || isNearBottom;
+        const isNearTop = avgY > page.viewportHeight * 0.92;
+        const isNearBottom = avgY < page.viewportHeight * 0.08;
+        isInConsistentPosition = (isNearTop || isNearBottom) && (positions.size > 1 || this.analyzedPageCount > 5);
       }
 
-      // 4. Final decision
       if (isRepeated && isShort) {
         if (isInConsistentPosition) return false;
-        if (freq > 0.8) return false;
+        if (freq > 0.8 && this.analyzedPageCount > 2) return false;
       }
 
       return true;
     });
 
-    // Inline reference cleanup
+    if (filteredLines.length === 0 && lines.length > 0) {
+      return lines
+        .filter(l => !/^\d+$/.test(l.text.trim()))
+        .map(l => l.text)
+        .join(' ')
+        .trim();
+    }
+
     return filteredLines
       .map(line => {
         let t = line.text;
@@ -111,34 +122,50 @@ export class PDFCleaner {
       .trim();
   }
 
+  /**
+   * Optimized item-to-line grouping
+   */
   private processItemsIntoLines(items: any[], pageNumber: number, viewportHeight: number): TextItem[] {
-    if (items.length === 0) return [];
+    if (!items || items.length === 0) return [];
 
-    // Faster grouping: Use a Map for Y-coordinates to avoid full sort if possible
-    // But since lines can have slight variations in Y, we still need some sorting.
-    const sortedItems = [...items].sort((a, b) => {
-      const yA = a.transform[5];
-      const yB = b.transform[5];
-      if (Math.abs(yA - yB) < 5) return a.transform[4] - b.transform[4];
-      return yB - yA;
+    // Pre-extract and filter valid text items to avoid crashes on marks/empty elements
+    const mappedItems = items
+      .filter(item => item && typeof item.str === 'string' && Array.isArray(item.transform))
+      .map(item => ({
+        str: item.str,
+        x: item.transform[4],
+        y: item.transform[5]
+      }));
+
+    if (mappedItems.length === 0) return [];
+
+    // Sort by Y descending (top to bottom), then X ascending (left to right)
+    mappedItems.sort((a, b) => {
+      const yDiff = b.y - a.y;
+      if (Math.abs(yDiff) < 4) return a.x - b.x; 
+      return yDiff;
     });
 
     const lines: TextItem[] = [];
-    let currentLine: TextItem | null = null;
+    if (mappedItems.length === 0) return lines;
 
-    for (const item of sortedItems) {
-      const text = item.str;
-      const y = item.transform[5];
+    let currentLine: TextItem = { 
+      text: mappedItems[0].str, 
+      y: mappedItems[0].y, 
+      pageNumber 
+    };
 
-      if (!currentLine || Math.abs(currentLine.y - y) > 5) {
-        if (currentLine) lines.push(currentLine);
-        currentLine = { text, y, pageNumber };
+    for (let i = 1; i < mappedItems.length; i++) {
+      const item = mappedItems[i];
+      if (Math.abs(currentLine.y - item.y) < 4) {
+        currentLine.text += (currentLine.text.endsWith(' ') ? '' : ' ') + item.str;
       } else {
-        currentLine.text += (currentLine.text.endsWith(' ') ? '' : ' ') + text;
+        lines.push(currentLine);
+        currentLine = { text: item.str, y: item.y, pageNumber };
       }
     }
-
-    if (currentLine) lines.push(currentLine);
+    lines.push(currentLine);
+    
     return lines;
   }
 }

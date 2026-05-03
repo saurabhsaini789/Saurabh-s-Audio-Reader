@@ -29,6 +29,7 @@ export const useTTS = (onChunkEnd?: () => void) => {
         const savedCleanMode = localStorage.getItem('pref-clean-mode');
 
         const defaultVoice = availableVoices.find(v => v.name === savedVoiceName) || 
+                       availableVoices.find(v => v.name === 'Google UK English Female (en-GB)') ||
                        availableVoices.find(v => v.name.includes('Google') && v.lang.includes('en')) ||
                        availableVoices.find(v => v.lang.includes('en')) ||
                        availableVoices[0];
@@ -56,13 +57,16 @@ export const useTTS = (onChunkEnd?: () => void) => {
       setIsPlaying(false);
     }
   }, []);
-
   const speak = useCallback((text: string) => {
     if (!synth.current) return;
 
     stop();
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    // Fix: Prevent TTS from spelling out ALL CAPS words by converting them to lowercase for the voice engine
+    // We only do this for words with 2 or more letters to keep small acronyms correct
+    const normalizedText = text.replace(/\b([A-Z]{2,})\b/g, (match) => match.toLowerCase());
+    
+    const utterance = new SpeechSynthesisUtterance(normalizedText);
     if (currentVoice) utterance.voice = currentVoice;
     utterance.rate = settings.rate;
     utterance.pitch = settings.pitch;

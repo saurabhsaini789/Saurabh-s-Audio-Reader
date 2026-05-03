@@ -10,118 +10,113 @@ export const usePDF = () => {
 
   const processPDF = useCallback(async (file: File | ArrayBuffer, name: string, cleanReadingMode = true) => {
     setIsProcessing(true);
-    setExtractionProgress(0);
+    setExtractionProgress(1);
     setFileName(name);
     
+    let pdf: any = null;
+    
     try {
-      // Dynamically import PDF.js - version 5.x specific
+      // 1. Load library and set worker
       const pdfjsLib = await import('pdfjs-dist');
       
-      // Use the standard worker from unpkg but try to be more robust
-      const version = pdfjsLib.version || '5.7.284';
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
+      // Fix: Use a more robust way to find the worker path
+      const isGitHubPages = window.location.hostname.includes('github.io');
+      const basePath = isGitHubPages ? '/Saurabh-s-Audio-Reader' : '';
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `${basePath}/pdfjs/pdf.worker.min.mjs`;
 
       const data = file instanceof File ? await file.arrayBuffer() : file;
+      const version = '5.7.284';
       
       const loadingTask = pdfjsLib.getDocument({ 
         data,
         cMapUrl: `https://unpkg.com/pdfjs-dist@${version}/cmaps/`,
         cMapPacked: true,
         standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${version}/standard_fonts/`,
-        disableFontFace: true, // Often helps on mobile to avoid font loading issues
+        disableFontFace: true,
       });
 
-      const pdf = await loadingTask.promise;
+      pdf = await loadingTask.promise;
       const totalPages = pdf.numPages;
-      const cleaner = new PDFCleaner({ enabled: cleanReadingMode, sampleLimit: 50 });
-
-      // Pass 1: Analyze frequency (Sampling for large PDFs)
-      const sampleRate = totalPages > 50 ? Math.floor(totalPages / 25) : 1;
+      const rawPagesData: any[] = [];
       
-      for (let i = 1; i <= totalPages; i += sampleRate) {
-        try {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          const viewport = page.getViewport({ scale: 1 });
-          
-          cleaner.analyzePage(textContent.items, i, viewport.height);
-          
-          // Progress for Pass 1 (0-30%)
-          setExtractionProgress(Math.round((i / totalPages) * 30));
-          
-          // Cleanup page resources
-          (page as any).cleanup();
-        } catch (err) {
-          console.warn(`Failed to analyze page ${i}:`, err);
-        }
+      // Phase 1: Collect raw data for analysis (required for header/footer detection)
+      for (let i = 1; i <= totalPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const viewport = page.getViewport({ scale: 1 });
         
-        if (i % 5 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+        rawPagesData.push({
+          items: textContent.items,
+          pageNumber: i,
+          viewportHeight: viewport.height
+        });
+        
+        setExtractionProgress(Math.round((i / totalPages) * 30)); // First 30% is analysis
+        (page as any).cleanup();
+        await new Promise(r => setTimeout(r, 0));
       }
 
-      // Pass 2: Clean and Chunk
+      // Phase 2: Analyze and Clean
+      const cleaner = new PDFCleaner({ enabled: cleanReadingMode });
+      cleaner.analyzePages(rawPagesData);
+      
       const extractedChunks: TextChunk[] = [];
       
-      for (let i = 1; i <= totalPages; i++) {
-        try {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          const viewport = page.getViewport({ scale: 1 });
-          
-          const cleanedText = cleaner.cleanPage(textContent.items, i, viewport.height);
+      // Better sentence segmenter (Polyfill-friendly approach)
+      const segmentText = (text: string) => {
+        if ('Segmenter' in Intl) {
+          const segmenter = new (Intl as any).Segmenter('en', { granularity: 'sentence' });
+          return Array.from(segmenter.segment(text)).map((s: any) => s.segment.trim());
+        }
+        // Fallback to improved regex if Segmenter is unavailable
+        return text
+          .replace(/([.?!])\s+(?=[A-Z])/g, "$1|")
+          .split("|")
+          .map(s => s.trim());
+      };
 
-          if (cleanedText) {
-            // Smart chunking
-            const paragraphs = cleanedText.split(/\.\s{1,}/).filter(p => p.trim().length > 10);
-            
-            if (paragraphs.length === 0 && cleanedText.trim().length > 0) {
-              const sentences = cleanedText.match(/[^.!?]+[.!?]+/g) || [cleanedText];
-              for (let j = 0; j < sentences.length; j += 3) {
-                const chunkText = sentences.slice(j, j + 3).join(' ').trim();
-                if (chunkText) {
-                  extractedChunks.push({
-                    id: `p${i}-c${extractedChunks.length}`,
-                    pageNumber: i,
-                    text: chunkText
-                  });
-                }
-              }
-            } else {
-              paragraphs.forEach((p, idx) => {
-                const cleanText = p.trim() + (p.endsWith('.') ? '' : '.');
-                extractedChunks.push({
-                  id: `p${i}-c${idx}`,
-                  pageNumber: i,
-                  text: cleanText
-                });
+      for (let i = 0; i < rawPagesData.length; i++) {
+        const pageData = rawPagesData[i];
+        const cleanedText = cleaner.cleanPageData(pageData);
+        
+        if (cleanedText.length > 5) {
+          const sentences = segmentText(cleanedText);
+          
+          sentences.forEach((sentence) => {
+            if (sentence.length > 5) {
+              extractedChunks.push({
+                id: `p${pageData.pageNumber}-c${extractedChunks.length}`,
+                pageNumber: pageData.pageNumber,
+                text: sentence
               });
             }
-          }
-
-          // Cleanup page resources
-          (page as any).cleanup();
-        } catch (err) {
-          console.warn(`Failed to process page ${i}:`, err);
+          });
         }
-
-        // Progress for Pass 2 (30-100%)
-        setExtractionProgress(30 + Math.round((i / totalPages) * 70));
         
-        // Yield more frequently for responsiveness
-        if (i % 3 === 0) await new Promise(resolve => setTimeout(resolve, 10)); // Slightly longer wait for mobile
+        setExtractionProgress(30 + Math.round(((i + 1) / totalPages) * 70));
+        await new Promise(r => setTimeout(r, 0));
       }
 
       if (extractedChunks.length === 0) {
-        throw new Error('No readable text could be extracted from this PDF.');
+        throw new Error('No readable text found in PDF');
       }
 
       setChunks(extractedChunks);
       return extractedChunks;
     } catch (error: any) {
-      console.error('Error processing PDF:', error);
-      throw new Error(`Failed to read PDF: ${error.message || 'Unknown error'}`);
+      console.error('Extraction Error:', error);
+      throw error;
     } finally {
+      // CRITICAL: Cleanup PDF document to prevent memory leaks
+      if (pdf) {
+        try {
+          await pdf.destroy();
+        } catch (e) {
+          console.warn('PDF cleanup error:', e);
+        }
+      }
       setIsProcessing(false);
-      setExtractionProgress(0);
+      setTimeout(() => setExtractionProgress(0), 500);
     }
   }, []);
 

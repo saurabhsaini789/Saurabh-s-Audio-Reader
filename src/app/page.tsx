@@ -36,6 +36,7 @@ export default function Home() {
   const [savedSession, setSavedSession] = useState<{ name: string; index: number; progress: number } | null>(null);
   const [sleepTimer, setSleepTimer] = useState<number | null>(null); // in minutes
   const [error, setError] = useState<string | null>(null);
+  const [isRestoring, setIsRestoring] = useState(true);
   const activeChunkRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
@@ -65,31 +66,38 @@ export default function Home() {
   // Persistence: Load last session
   useEffect(() => {
     const loadSession = async () => {
-      const savedFileName = localStorage.getItem('last-pdf-name');
-      const savedIndex = localStorage.getItem('last-chunk-index');
-      
-      // Load chunks from IndexedDB (safer for large files)
-      const savedChunks = await get('last-chunks');
+      try {
+        const savedFileName = localStorage.getItem('last-pdf-name');
+        const savedIndex = localStorage.getItem('last-chunk-index');
+        
+        // Load chunks from IndexedDB (safer for large files)
+        const savedChunks = await get('last-chunks');
 
-      if (savedFileName && savedChunks) {
-        setChunks(savedChunks);
-        const index = savedIndex ? parseInt(savedIndex) : 0;
-        setSavedSession({
-          name: savedFileName,
-          index: index,
-          progress: Math.round(((index + 1) / savedChunks.length) * 100)
-        });
-      }
+        if (savedFileName && savedChunks && savedChunks.length > 0) {
+          setChunks(savedChunks);
+          const index = savedIndex ? parseInt(savedIndex) : 0;
+          setSavedSession({
+            name: savedFileName,
+            index: index,
+            progress: Math.round(((index + 1) / savedChunks.length) * 100)
+          });
+          setCurrentIndex(index);
+        }
 
-      // Load preferences
-      const savedAutoScroll = localStorage.getItem('pref-auto-scroll');
-      if (savedAutoScroll !== null) setIsAutoScrollEnabled(savedAutoScroll === 'true');
+        // Load preferences
+        const savedAutoScroll = localStorage.getItem('pref-auto-scroll');
+        if (savedAutoScroll !== null) setIsAutoScrollEnabled(savedAutoScroll === 'true');
 
-      // Try to recover file from IndexedDB
-      const fileData = await get('last-pdf-file');
-      if (fileData && !savedChunks) {
-        const savedCleanMode = localStorage.getItem('pref-clean-mode');
-        processPDF(fileData, savedFileName || 'Restored PDF', savedCleanMode !== null ? savedCleanMode === 'true' : true);
+        // Try to recover file from IndexedDB (Only if not already processing)
+        const fileData = await get('last-pdf-file');
+        if (fileData && !savedChunks && !isProcessing) {
+          const savedCleanMode = localStorage.getItem('pref-clean-mode');
+          await processPDF(fileData, savedFileName || 'Restored PDF', savedCleanMode !== null ? savedCleanMode === 'true' : true);
+        }
+      } catch (err) {
+        console.error('Failed to load session:', err);
+      } finally {
+        setIsRestoring(false);
       }
     };
     loadSession();
@@ -97,15 +105,13 @@ export default function Home() {
 
   // Persistence: Save session
   useEffect(() => {
-    if (chunks.length > 0) {
-      // Save large data to IndexedDB
+    // Only save if we have chunks AND we aren't currently extracting or restoring
+    if (chunks.length > 0 && !isProcessing && !isRestoring) {
       set('last-chunks', chunks).catch(err => console.error('Failed to save chunks:', err));
-      
-      // Save small metadata to localStorage
       localStorage.setItem('last-chunk-index', currentIndex.toString());
       if (fileName) localStorage.setItem('last-pdf-name', fileName);
     }
-  }, [chunks, currentIndex, fileName]);
+  }, [chunks, currentIndex, fileName, isProcessing, isRestoring]);
 
   // Handle auto-play when index changes
   useEffect(() => {
@@ -198,24 +204,26 @@ export default function Home() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      try {
-        setError(null);
-        setChunks([]);
-        setCurrentIndex(0);
-        
-        // Pass the file object directly to processPDF so it can show the loading state immediately
-        // processPDF handles the arrayBuffer conversion internally
-        await processPDF(file, file.name, settings.cleanReadingMode);
-        
-        // After processing starts/finishes, we can save to IndexedDB in the background
-        const buffer = await file.arrayBuffer();
-        await set('last-pdf-file', buffer);
-        await set('last-chunks', []); // Clear old chunks from storage
-      } catch (error: any) {
-        console.error('File upload/process error:', error);
-        setError(error.message || 'Failed to process PDF. Please try a different file.');
-      }
+    if (!file) return;
+
+    console.log('Starting upload for:', file.name);
+    try {
+      setError(null);
+      setChunks([]);
+      setCurrentIndex(0);
+      
+      const extracted = await processPDF(file, file.name, settings.cleanReadingMode);
+      console.log('Extraction complete, chunks found:', extracted?.length);
+      
+      // Save to background storage only AFTER successful extraction
+      const buffer = await file.arrayBuffer();
+      await set('last-pdf-file', buffer);
+      // We don't need to clear last-chunks here because the Persistence effect 
+      // will save the new chunks automatically as they change.
+    } catch (error: any) {
+      console.error('File upload/process error:', error);
+      setError(error.message || 'Failed to process PDF. Please try a different file.');
+      setChunks([]); // Ensure we are back to upload state on error
     }
   };
 
