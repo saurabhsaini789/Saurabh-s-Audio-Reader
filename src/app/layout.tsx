@@ -8,7 +8,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "AudioReader - Your PDFs, Narrated",
+  title: "AudioReader - Your PDFs, narrated.",
   description: "Smooth, audiobook-style reading for your PDF documents using native text-to-speech.",
   manifest: "/Saurabh-s-Audio-Reader/manifest.json",
   icons: {

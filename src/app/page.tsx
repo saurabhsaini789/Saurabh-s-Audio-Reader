@@ -35,6 +35,7 @@ export default function Home() {
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
   const [savedSession, setSavedSession] = useState<{ name: string; index: number; progress: number } | null>(null);
   const [sleepTimer, setSleepTimer] = useState<number | null>(null); // in minutes
+  const [error, setError] = useState<string | null>(null);
   const activeChunkRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
@@ -199,21 +200,21 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (file) {
       try {
-        // Get arrayBuffer once
-        const buffer = await file.arrayBuffer();
-        
-        // Clear old session
+        setError(null);
         setChunks([]);
         setCurrentIndex(0);
-        await set('last-chunks', []); // Clear old chunks from storage
         
-        // Store file in IndexedDB
+        // Pass the file object directly to processPDF so it can show the loading state immediately
+        // processPDF handles the arrayBuffer conversion internally
+        await processPDF(file, file.name, settings.cleanReadingMode);
+        
+        // After processing starts/finishes, we can save to IndexedDB in the background
+        const buffer = await file.arrayBuffer();
         await set('last-pdf-file', buffer);
-        
-        // Process
-        await processPDF(buffer, file.name, settings.cleanReadingMode);
-      } catch (error) {
+        await set('last-chunks', []); // Clear old chunks from storage
+      } catch (error: any) {
         console.error('File upload/process error:', error);
+        setError(error.message || 'Failed to process PDF. Please try a different file.');
       }
     }
   };
@@ -269,7 +270,7 @@ export default function Home() {
         <div className="flex items-center gap-2">
           <label className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer group">
             <PlusCircle className="w-5 h-5 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
-            <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} />
+            <input type="file" accept="application/pdf" className="hidden" onChange={handleFileUpload} />
           </label>
 
           {chunks.length > 0 && chunks.some(c => c.isImportant) && (
@@ -282,7 +283,7 @@ export default function Home() {
           )}
           <label className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer">
             <UploadIcon className="w-5 h-5" />
-            <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} />
+            <input type="file" accept="application/pdf" className="hidden" onChange={handleFileUpload} />
           </label>
           <button 
             onClick={() => setIsSettingsOpen(true)}
@@ -318,6 +319,20 @@ export default function Home() {
               <p className="text-lg font-bold text-slate-900 dark:text-white mb-1">Processing PDF</p>
               <p className="text-sm text-slate-500 animate-pulse">Extracting text for the best reading experience...</p>
             </div>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center h-[60vh] text-center px-8">
+            <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-6">
+              <PlusCircle className="w-10 h-10 text-red-600 rotate-45" />
+            </div>
+            <h2 className="text-2xl font-bold mb-2 text-red-600">Something went wrong</h2>
+            <p className="text-slate-500 mb-8 max-w-xs">{error}</p>
+            <button 
+              onClick={() => setError(null)}
+              className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg"
+            >
+              Try Again
+            </button>
           </div>
         ) : chunks.length > 0 ? (
           <div className="max-w-2xl mx-auto space-y-6 py-[35vh]">
@@ -382,7 +397,7 @@ export default function Home() {
               <label className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-3 cursor-pointer">
                 <UploadIcon className="w-5 h-5" />
                 Upload PDF
-                <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} />
+                <input type="file" accept="application/pdf" className="hidden" onChange={handleFileUpload} />
               </label>
 
               {savedSession && (
