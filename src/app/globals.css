@@ -3,43 +3,61 @@
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-primary: #6366f1;
-  --color-primary-hover: #4f46e5;
-  --color-secondary: #ec4899;
-  --font-sans: var(--font-outfit), ui-sans-serif, system-ui;
+  --color-primary: #ffcc66;
+  --color-primary-hover: #f0b84d;
+  --color-secondary: #f7f3eb;
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui;
 }
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f7f3eb;
+  --foreground: #0f1115;
   --card: #ffffff;
-  --card-foreground: #0f172a;
+  --card-foreground: #0f1115;
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #f1f5f9;
-  --accent-foreground: #0f172a;
-  --border: #e2e8f0;
+  --popover-foreground: #0f1115;
+  --primary: #ffcc66;
+  --primary-foreground: #0f1115;
+  --muted: #e5e1da;
+  --muted-foreground: #4a4844;
+  --accent: #f0ede4;
+  --accent-foreground: #0f1115;
+  --border: #d6d2cb;
   --radius: 0.75rem;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f1115;
+    --foreground: #f7f3eb;
+    --card: #16191f;
+    --card-foreground: #f7f3eb;
+    --popover: #16191f;
+    --popover-foreground: #f7f3eb;
+    --primary: #ffcc66;
+    --primary-foreground: #0f1115;
+    --muted: #1e2128;
+    --muted-foreground: #a0a2a7;
+    --accent: #1e2128;
+    --accent-foreground: #f7f3eb;
+    --border: #2a2d35;
+  }
+}
+
 .dark {
-  --background: #020617;
-  --foreground: #f8fafc;
-  --card: #1e293b;
-  --card-foreground: #f8fafc;
-  --popover: #1e293b;
-  --popover-foreground: #f8fafc;
-  --primary: #818cf8;
-  --primary-foreground: #0f172a;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #1e293b;
-  --accent-foreground: #f8fafc;
-  --border: #334155;
+  --background: #0f1115;
+  --foreground: #f7f3eb;
+  --card: #16191f;
+  --card-foreground: #f7f3eb;
+  --popover: #16191f;
+  --popover-foreground: #f7f3eb;
+  --primary: #ffcc66;
+  --primary-foreground: #0f1115;
+  --muted: #1e2128;
+  --muted-foreground: #a0a2a7;
+  --accent: #1e2128;
+  --accent-foreground: #f7f3eb;
+  --border: #2a2d35;
 }
 
 @layer base {
@@ -68,7 +86,7 @@
 }
 
 .chunk-active {
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(255, 204, 102, 0.1);
   border-left: 4px solid var(--primary);
   transition: all 0.3s ease;
 }

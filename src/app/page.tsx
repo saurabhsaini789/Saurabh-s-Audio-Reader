@@ -169,11 +169,17 @@ export default function Home() {
   }, [sleepTimer, isAutoPlaying, pause]);
 
   const handleResume = async () => {
-    const savedChunks = await get('last-chunks');
-    const savedIndex = localStorage.getItem('last-chunk-index');
-    if (savedChunks) {
-      setChunks(savedChunks);
-      if (savedIndex) setCurrentIndex(parseInt(savedIndex));
+    try {
+      const savedChunks = await get('last-chunks');
+      const savedIndex = localStorage.getItem('last-chunk-index');
+      if (savedChunks && savedChunks.length > 0) {
+        setChunks(savedChunks);
+        if (savedIndex) setCurrentIndex(parseInt(savedIndex));
+      } else {
+        console.warn('No chunks found to resume');
+      }
+    } catch (err) {
+      console.error('Resume failed:', err);
     }
   };
 
@@ -257,18 +263,30 @@ export default function Home() {
     }
   };
 
+  const closeBook = async () => {
+    stop();
+    setIsAutoPlaying(false);
+    setChunks([]);
+    setCurrentIndex(0);
+    // Optional: Clear storage
+    localStorage.removeItem('last-pdf-name');
+    localStorage.removeItem('last-chunk-index');
+    await set('last-chunks', null);
+    await set('last-pdf-file', null);
+  };
+
   return (
-    <main className="flex flex-col h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+    <main className="flex flex-col h-screen overflow-hidden bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-10 glass px-4 py-3 flex items-center justify-between border-b shadow-sm">
+      <header className="sticky top-0 z-10 bg-card px-4 py-3 flex items-center justify-between border-b border-border/10 shadow-sm">
         <div className="flex items-center gap-2">
-          <div className="bg-indigo-600 p-2 rounded-lg">
+          <div className="bg-primary p-2 rounded-lg">
             <BookOpen className="text-white w-5 h-5" />
           </div>
           <div>
             <h1 className="font-bold text-lg tracking-tight">AudioReader</h1>
             {fileName && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[150px]">
+              <p className="text-xs text-muted-foreground truncate max-w-[150px]">
                 {fileName}
               </p>
             )}
@@ -277,7 +295,7 @@ export default function Home() {
         
         <div className="flex items-center gap-2">
           <label className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer group">
-            <PlusCircle className="w-5 h-5 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
+            <PlusCircle className="w-5 h-5 text-[#b37700] dark:text-primary dark:text-indigo-400 group-hover:scale-110 transition-transform" />
             <input type="file" accept="application/pdf" className="hidden" onChange={handleFileUpload} />
           </label>
 
@@ -293,6 +311,15 @@ export default function Home() {
             <UploadIcon className="w-5 h-5" />
             <input type="file" accept="application/pdf" className="hidden" onChange={handleFileUpload} />
           </label>
+          {chunks.length > 0 && (
+            <button 
+              onClick={closeBook}
+              className="p-2 rounded-full hover:bg-red-500/10 text-red-500 transition-colors"
+              title="Close current book"
+            >
+              <PlusCircle className="w-5 h-5 rotate-45" />
+            </button>
+          )}
           <button 
             onClick={() => setIsSettingsOpen(true)}
             className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
@@ -313,19 +340,19 @@ export default function Home() {
                   strokeWidth="8" stroke="currentColor" fill="transparent" r="40" cx="50" cy="50" 
                 />
                 <motion.circle 
-                  className="text-indigo-600 stroke-current" 
+                  className="text-[#b37700] dark:text-primary stroke-current" 
                   strokeWidth="8" strokeDasharray="251.2" 
                   animate={{ strokeDashoffset: 251.2 - (251.2 * extractionProgress) / 100 }}
                   strokeLinecap="round" fill="transparent" r="40" cx="50" cy="50" 
                 />
               </svg>
-              <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-indigo-600">
+              <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-[#b37700] dark:text-primary">
                 {extractionProgress}%
               </div>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold text-slate-900 dark:text-white mb-1">Processing PDF</p>
-              <p className="text-sm text-slate-500 animate-pulse">Extracting text for the best reading experience...</p>
+              <p className="text-lg font-bold text-foreground mb-1">Processing PDF</p>
+              <p className="text-sm text-muted-foreground animate-pulse">Extracting text for the best reading experience...</p>
             </div>
           </div>
         ) : error ? (
@@ -334,10 +361,10 @@ export default function Home() {
               <PlusCircle className="w-10 h-10 text-red-600 rotate-45" />
             </div>
             <h2 className="text-2xl font-bold mb-2 text-red-600">Something went wrong</h2>
-            <p className="text-slate-500 mb-8 max-w-xs">{error}</p>
+            <p className="text-muted-foreground mb-8 max-w-xs">{error}</p>
             <button 
               onClick={() => setError(null)}
-              className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg"
+              className="bg-primary text-white px-8 py-3 rounded-xl font-bold shadow-lg"
             >
               Try Again
             </button>
@@ -354,8 +381,8 @@ export default function Home() {
                 transition={{ delay: index * 0.05 }}
                 className={`p-6 rounded-2xl cursor-pointer transition-all duration-500 relative ${
                   index === currentIndex 
-                    ? 'chunk-active shadow-xl scale-[1.05] ring-2 ring-indigo-500/20 z-10 bg-white dark:bg-slate-900' 
-                    : 'hover:bg-white/50 dark:hover:bg-slate-900/50 opacity-40 blur-[1px] scale-95'
+                    ? 'chunk-active shadow-xl scale-[1.05] ring-2 ring-indigo-500/20 z-10 bg-foreground' 
+                    : 'hover:bg-white/50 dark:hover:bg-foreground/50 opacity-40 blur-[1px] scale-95'
                 } ${chunk.isImportant ? 'border-l-4 border-l-amber-400 bg-amber-50/30 dark:bg-amber-900/10' : ''}`}
               >
                 <button 
@@ -375,15 +402,15 @@ export default function Home() {
                   </span>
                   {index === currentIndex && isAutoPlaying && (
                     <span className="flex gap-1 items-end h-3">
-                      <span className="w-1 bg-indigo-600 animate-[bounce_0.6s_infinite]" />
-                      <span className="w-1 bg-indigo-600 animate-[bounce_0.8s_infinite]" />
-                      <span className="w-1 bg-indigo-600 animate-[bounce_0.7s_infinite]" />
+                      <span className="w-1 bg-primary animate-[bounce_0.6s_infinite]" />
+                      <span className="w-1 bg-primary animate-[bounce_0.8s_infinite]" />
+                      <span className="w-1 bg-primary animate-[bounce_0.7s_infinite]" />
                     </span>
                   )}
                 </div>
                 <p className={`text-lg leading-relaxed ${
                   index === currentIndex 
-                    ? 'text-slate-900 dark:text-white font-medium' 
+                    ? 'text-foreground font-medium' 
                     : 'text-slate-600 dark:text-slate-400'
                 }`}>
                   {chunk.text}
@@ -394,15 +421,15 @@ export default function Home() {
         ) : (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center px-8">
             <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/20 rounded-full flex items-center justify-center mb-6">
-              <FileText className="w-10 h-10 text-indigo-600" />
+              <FileText className="w-10 h-10 text-[#b37700] dark:text-primary" />
             </div>
             <h2 className="text-2xl font-bold mb-2">Ready to listen?</h2>
-            <p className="text-slate-500 mb-8 max-w-xs">
+            <p className="text-muted-foreground mb-8 max-w-xs">
               Upload a PDF to transform it into a professional audiobook experience.
             </p>
             
             <div className="flex flex-col gap-4 w-full max-w-xs">
-              <label className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-3 cursor-pointer">
+              <label className="bg-primary hover:bg-primary-hover text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-3 cursor-pointer">
                 <UploadIcon className="w-5 h-5" />
                 Upload PDF
                 <input type="file" accept="application/pdf" className="hidden" onChange={handleFileUpload} />
@@ -411,18 +438,32 @@ export default function Home() {
               {savedSession && (
                 <button 
                   onClick={handleResume}
-                  className="bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 p-4 rounded-2xl flex items-center gap-4 hover:border-indigo-600 dark:hover:border-indigo-600 transition-all text-left"
+                  className="bg-card border-2 border-border/10 p-4 rounded-2xl flex items-center gap-4 hover:border-primary transition-all text-left shadow-sm"
                 >
                   <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <RotateCcw className="w-6 h-6 text-indigo-600" />
+                    <RotateCcw className="w-6 h-6 text-[#b37700] dark:text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1">Resume Last Session</p>
-                    <p className="text-sm font-bold truncate">{savedSession.name}</p>
-                    <p className="text-[10px] text-slate-500">{savedSession.progress}% complete</p>
+                    <p className="text-[10px] font-bold text-[#b37700] dark:text-[#b37700] dark:text-primary uppercase tracking-widest mb-1">Resume Last Session</p>
+                    <p className="text-sm font-bold truncate text-foreground">{savedSession.name}</p>
+                    <p className="text-[10px] text-[#555] dark:text-muted-foreground font-medium">{savedSession.progress}% complete</p>
                   </div>
                 </button>
               )}
+            </div>
+
+            <div className="mt-12 text-center">
+              <p className="text-xs text-[#666] dark:text-muted-foreground">
+                Created by{" "}
+                <a 
+                  href="https://iamsaurabhsaini.com/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-[#b37700] dark:text-[#b37700] dark:text-primary hover:underline font-bold"
+                >
+                  Saurabh Saini
+                </a>
+              </p>
             </div>
           </div>
         )}
@@ -435,7 +476,7 @@ export default function Home() {
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
-            className="fixed bottom-0 left-0 right-0 glass border-t pb-8 pt-4 px-6 z-20"
+            className="fixed bottom-0 left-0 right-0 bg-card/80 backdrop-blur-xl border-t border-border/10 pb-8 pt-4 px-6 z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]"
           >
             <div className="max-w-2xl mx-auto">
               {/* Progress Slider */}
@@ -446,10 +487,10 @@ export default function Home() {
                   max={chunks.length - 1}
                   value={currentIndex}
                   onChange={(e) => handleChunkClick(parseInt(e.target.value))}
-                  className="absolute w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full appearance-none cursor-pointer accent-indigo-600 z-10"
+                  className="absolute w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full appearance-none cursor-pointer accent-primary z-10"
                 />
                 <motion.div 
-                  className="absolute h-1.5 bg-indigo-600 rounded-full pointer-events-none"
+                  className="absolute h-1.5 bg-primary rounded-full pointer-events-none"
                   style={{ width: `${(currentIndex / (chunks.length - 1)) * 100}%` }}
                 />
               </div>
@@ -457,10 +498,10 @@ export default function Home() {
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0 pr-4">
-                    <p className="text-sm font-bold truncate text-slate-900 dark:text-slate-100">
+                    <p className="text-sm font-bold truncate text-foreground dark:text-slate-100">
                       {chunks[currentIndex]?.text.substring(0, 60)}...
                     </p>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#b37700] dark:text-primary dark:text-indigo-400">
                       {Math.round(((currentIndex + 1) / chunks.length) * 100)}% COMPLETE
                     </p>
                   </div>
@@ -468,21 +509,21 @@ export default function Home() {
                   <div className="flex items-center gap-6">
                     <button 
                       onClick={skipBackward} 
-                      className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                      className="text-slate-600 dark:text-slate-300 hover:text-[#b37700] dark:text-primary dark:hover:text-indigo-400 transition-colors"
                       aria-label="Previous chunk"
                     >
                       <SkipBack fill="currentColor" className="w-6 h-6" />
                     </button>
                     <button 
                       onClick={togglePlayback}
-                      className="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all hover:bg-indigo-700"
+                      className="w-14 h-14 bg-primary rounded-full flex items-center justify-center text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all hover:bg-primary-hover"
                       aria-label={isAutoPlaying ? "Pause" : "Play"}
                     >
                       {isAutoPlaying ? <Pause fill="white" className="w-6 h-6" /> : <Play fill="white" className="w-6 h-6 ml-1" />}
                     </button>
                     <button 
                       onClick={skipForward} 
-                      className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                      className="text-slate-600 dark:text-slate-300 hover:text-[#b37700] dark:text-primary dark:hover:text-indigo-400 transition-colors"
                       aria-label="Next chunk"
                     >
                       <SkipForward fill="currentColor" className="w-6 h-6" />
@@ -504,13 +545,13 @@ export default function Home() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsSettingsOpen(false)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              className="absolute inset-0 bg-background/60 backdrop-blur-md"
             />
             <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl"
+              className="relative w-full max-w-md bg-card/90 backdrop-blur-2xl text-card-foreground rounded-t-3xl sm:rounded-3xl p-8 shadow-2xl border border-border/20"
             >
               <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-8 sm:hidden" />
               
@@ -523,11 +564,11 @@ export default function Home() {
 
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium mb-3 text-slate-500">Voice</label>
+                  <label className="block text-sm font-medium mb-3 text-muted-foreground">Voice</label>
                   <select 
                     value={settings.voiceName || ''}
                     onChange={(e) => updateSettings({ voiceName: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 text-sm focus:ring-2 ring-indigo-500"
+                    className="w-full bg-background border border-border/20 rounded-xl px-4 py-3 text-sm focus:ring-2 ring-primary"
                   >
                     {voices.map(voice => (
                       <option key={voice.name} value={voice.name}>
@@ -539,29 +580,29 @@ export default function Home() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-3 text-slate-500">Speed ({settings.rate}x)</label>
+                    <label className="block text-sm font-medium mb-3 text-muted-foreground">Speed ({settings.rate}x)</label>
                     <input 
                       type="range" min="0.5" max="2" step="0.1" 
                       value={settings.rate}
                       onChange={(e) => updateSettings({ rate: parseFloat(e.target.value) })}
-                      className="w-full accent-indigo-600"
+                      className="w-full accent-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-3 text-slate-500">Pitch ({settings.pitch})</label>
+                    <label className="block text-sm font-medium mb-3 text-muted-foreground">Pitch ({settings.pitch})</label>
                     <input 
                       type="range" min="0" max="2" step="0.1" 
                       value={settings.pitch}
                       onChange={(e) => updateSettings({ pitch: parseFloat(e.target.value) })}
-                      className="w-full accent-indigo-600"
+                      className="w-full accent-primary"
                     />
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+                <div className="flex items-center justify-between p-4 bg-background dark:bg-slate-800/50 rounded-2xl">
                   <div>
                     <p className="text-sm font-bold">Auto-scroll to reading</p>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Keep active text centered</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Keep active text centered</p>
                   </div>
                   <button 
                     onClick={() => {
@@ -570,7 +611,7 @@ export default function Home() {
                       localStorage.setItem('pref-auto-scroll', newState.toString());
                     }}
                     className={`w-12 h-6 rounded-full transition-colors relative flex items-center px-1 ${
-                      isAutoScrollEnabled ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                      isAutoScrollEnabled ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700'
                     }`}
                   >
                     <motion.div 
@@ -583,17 +624,17 @@ export default function Home() {
                 <div className="flex items-center justify-between p-4 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
                   <div>
                     <p className="text-sm font-bold flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      <Sparkles className="w-4 h-4 text-[#b37700] dark:text-primary" />
                       Clean Reading Mode
                     </p>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Remove headers, footers & page numbers</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Remove headers, footers & page numbers</p>
                   </div>
                   <button 
                     onClick={() => {
                       updateSettings({ cleanReadingMode: !settings.cleanReadingMode });
                     }}
                     className={`w-12 h-6 rounded-full transition-colors relative flex items-center px-1 ${
-                      settings.cleanReadingMode ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                      settings.cleanReadingMode ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700'
                     }`}
                   >
                     <motion.div 
@@ -604,10 +645,10 @@ export default function Home() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-3 text-slate-500 flex items-center justify-between">
+                  <label className="block text-sm font-medium mb-3 text-muted-foreground flex items-center justify-between">
                     <span className="flex items-center gap-2"><Moon className="w-4 h-4" /> Sleep Timer</span>
                     {sleepTimer && (
-                      <span className="text-indigo-600 font-bold">
+                      <span className="text-[#b37700] dark:text-primary font-bold">
                         {sleepTimer >= 60 ? `${Math.floor(sleepTimer / 60)}h ${sleepTimer % 60}m` : `${sleepTimer}m`}
                       </span>
                     )}
@@ -619,8 +660,8 @@ export default function Home() {
                         onClick={() => setSleepTimer(mins)}
                         className={`py-2 rounded-xl text-xs font-bold transition-all ${
                           sleepTimer === mins 
-                            ? 'bg-indigo-600 text-white' 
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            ? 'bg-primary text-white' 
+                            : 'bg-background dark:bg-slate-800 text-muted-foreground hover:bg-slate-100 dark:hover:bg-slate-700'
                         }`}
                       >
                         {mins ? `${mins}m` : 'Off'}
@@ -636,7 +677,7 @@ export default function Home() {
                         const val = parseInt(e.target.value);
                         setSleepTimer(val === 0 ? null : val);
                       }}
-                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full appearance-none cursor-pointer accent-indigo-600"
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full appearance-none cursor-pointer accent-primary"
                     />
                     <div className="flex justify-between mt-2">
                       <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">Custom duration (up to 2 hrs)</span>
@@ -644,7 +685,7 @@ export default function Home() {
                   </div>
 
                   {sleepTimer && isAutoPlaying && (
-                    <p className="text-[10px] text-indigo-500 mt-4 font-bold uppercase tracking-wider text-center animate-pulse">
+                    <p className="text-[10px] text-[#b37700] dark:text-primary mt-4 font-bold uppercase tracking-wider text-center animate-pulse">
                       Playback will stop automatically
                     </p>
                   )}
@@ -652,7 +693,7 @@ export default function Home() {
 
                 <button 
                   onClick={() => setIsSettingsOpen(false)}
-                  className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl mt-4 shadow-lg shadow-indigo-100 dark:shadow-none"
+                  className="w-full bg-primary text-white font-bold py-4 rounded-2xl mt-4 shadow-lg shadow-indigo-100 dark:shadow-none"
                 >
                   Done
                 </button>
@@ -671,13 +712,13 @@ export default function Home() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsHighlightsOpen(false)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              className="absolute inset-0 bg-foreground/60 backdrop-blur-sm"
             />
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl max-h-[80vh] flex flex-col"
+              className="relative w-full max-w-lg bg-foreground rounded-3xl p-6 shadow-2xl max-h-[80vh] flex flex-col"
             >
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
@@ -696,13 +737,13 @@ export default function Home() {
                   <button
                     key={chunk.id}
                     onClick={() => jumpToChunk(index)}
-                    className="w-full text-left p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all border border-transparent hover:border-indigo-200 group relative"
+                    className="w-full text-left p-4 rounded-2xl bg-background dark:bg-slate-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all border border-transparent hover:border-indigo-200 group relative"
                   >
                     <div className="flex justify-between items-start mb-1">
-                      <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest">PAGE {chunk.pageNumber}</p>
+                      <p className="text-xs font-bold text-primary uppercase tracking-widest">PAGE {chunk.pageNumber}</p>
                       <button
                         onClick={(e) => handleCopy(chunk.text, index, e)}
-                        className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 transition-colors text-slate-400 hover:text-indigo-600"
+                        className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-slate-700 transition-colors text-slate-400 hover:text-primary"
                       >
                         {copiedIndex === index ? (
                           <Check className="w-3.5 h-3.5 text-green-500" />
@@ -711,7 +752,7 @@ export default function Home() {
                         )}
                       </button>
                     </div>
-                    <p className="text-sm line-clamp-3 text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
+                    <p className="text-sm line-clamp-3 text-slate-700 dark:text-slate-300 group-hover:text-foreground dark:group-hover:text-white transition-colors">
                       {chunk.text}
                     </p>
                   </button>

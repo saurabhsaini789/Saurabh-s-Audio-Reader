@@ -19,9 +19,8 @@ export const usePDF = () => {
       // 1. Load library and set worker
       const pdfjsLib = await import('pdfjs-dist');
       
-      // Fix: Use a more robust way to find the worker path
-      const isGitHubPages = window.location.hostname.includes('github.io');
-      const basePath = isGitHubPages ? '/Saurabh-s-Audio-Reader' : '';
+      // Fix: Use the basePath for both Localhost and GitHub Pages as defined in next.config.ts
+      const basePath = '/Saurabh-s-Audio-Reader';
       pdfjsLib.GlobalWorkerOptions.workerSrc = `${basePath}/pdfjs/pdf.worker.min.mjs`;
 
       const data = file instanceof File ? await file.arrayBuffer() : file;

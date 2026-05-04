@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Outfit } from "next/font/google";
+import { Poppins } from "next/font/google";
 import "./globals.css";
 
-const outfit = Outfit({
+const poppins = Poppins({
   subsets: ["latin"],
-  variable: "--font-outfit",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-poppins",
 });
 
 export const metadata: Metadata = {
@@ -22,7 +23,7 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#6366f1",
+  themeColor: "#ffcc66",
 };
 
 export default function RootLayout({
@@ -32,8 +33,25 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${outfit.variable} font-sans antialiased`}>
-        {children}
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
+              } catch (_) {}
+            `,
+          }}
+        />
+      </head>
+      <body className={`${poppins.variable} font-sans antialiased min-h-screen flex flex-col`}>
+        <main className="flex-grow">
+          {children}
+        </main>
       </body>
     </html>
   );
